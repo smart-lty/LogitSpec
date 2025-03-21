@@ -1,7 +1,7 @@
 import torch
 
 
-def prepare_attention_inputs(past_len, next_token, candidate_list, num_draft_tokens, device, dtype=torch.float16):
+def prepare_attention_inputs(past_len, next_token, candidate_list, num_draft_tokens, device, pad_length, dtype=torch.float16):
     """
     LogitSpec organizes draft tokens in a tree manner. Each sub-sequence corresponds to a local causal mask.
     """
@@ -13,17 +13,27 @@ def prepare_attention_inputs(past_len, next_token, candidate_list, num_draft_tok
     
     draft_ids = [next_token] + [token for sub in candidate_list for token in sub]
     draft_ids = torch.tensor(draft_ids, device=device, dtype=torch.long).unsqueeze(0)
+
     position_ids = torch.zeros((1, seq_len), device=device, dtype=torch.long)
+    search_path = []
     
     idx = 1
     for sub_sequence in candidate_list:
         l = len(sub_sequence)
-        sub_mask = torch.tril(torch.ones((l, l), dtype=dtype, device=device))
-        causal_mask[idx:idx+l, idx+past_len:idx+past_len+l] = sub_mask
-        position_ids[0, idx:idx+l] = torch.arange(l) + 1
-        idx += l
+        if l == 1:
+            causal_mask[idx, idx+past_len] = 1
+            position_ids[0, idx] = 1
+            search_path.append([0, idx])
+            idx += 1
+        else:
+            sub_mask = torch.tril(torch.ones((l, l), dtype=dtype, device=device))
+            causal_mask[idx:idx+l, idx+past_len:idx+past_len+l] = sub_mask
+            position_ids[0, idx:idx+l] = torch.arange(l) + 1
+            search_path.append([0] + [i for i in range(idx, idx+l)])
+            idx += l
     
     position_ids += past_len
     causal_mask = causal_mask[None, None, :, :].expand(1, 1, -1, -1)
+    search_path = torch.tensor([path + [-1] * (pad_length-len(path)) for path in search_path], dtype=torch.long, device=device)
     
-    return draft_ids, causal_mask, position_ids 
+    return draft_ids, causal_mask, position_ids, search_path
