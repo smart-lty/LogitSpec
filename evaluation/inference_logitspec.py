@@ -49,7 +49,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bench-name",
         type=str,
-        default="mt_bench",
+        default="spec_bench",
         help="The name of the benchmark question set.",
     )
     parser.add_argument(
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         "--max_ngram_size", type=int, default=3, 
     )
     parser.add_argument(
-        "--num_pred_tokens", type=int, default=6, 
+        "--num_pred_tokens", type=int, default=10, 
     )
     parser.add_argument(
         "--draft_tree_capacity", type=int, default=64, 

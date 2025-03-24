@@ -1,5 +1,5 @@
 import torch
-
+import torch.nn.functional as F
 
 class LogitProcessor:
     def __init__(self, temperature : float = 0.0, top_k : int = 0, top_p : float = 0):
@@ -35,5 +35,7 @@ class LogitProcessor:
         return probs
 
     def sample(self, logits):
+        if self.temperature == 0:
+            return logits.argmax(dim=-1)
         idx_next = torch.multinomial(self.norm(logits), num_samples=1)
         return idx_next

@@ -52,6 +52,23 @@ class Pool:
                     self.pool[l-1][substr] = self.input_ids_list[end: end+self.num_pred_tokens]
 
 
+def get_draft_length_via_rank(rank: int):
+    """ 
+    rank 1-5: 5
+    rank 5-30: 3
+    rank 30-50: 2
+    rank >50: 1
+    """
+    assert isinstance(rank, int)
+    if rank <= 5:
+        return 5
+    elif rank <= 30:
+        return 3
+    elif rank <= 50:
+        return 2
+    else:
+        return 1
+
 def generate_draft_tokens(pool, input_ids, last_logit, logit_processor, max_ngram_size=3, draft_tree_capacity=64):
     """
     LogitSpec generates draft tokens in 3 steps:
@@ -91,7 +108,9 @@ def generate_draft_tokens(pool, input_ids, last_logit, logit_processor, max_ngra
             if ngram in pool[ngram_size-1]:
                 draft_sequence += pool[ngram_size-1][ngram]
                 break
-        draft_sequence = draft_sequence[:4]
+        
+        draft_len = get_draft_length_via_rank(idx)
+        draft_sequence = draft_sequence[:draft_len]
         draft_len = len(draft_sequence)
         
         if draft_len >= draft_tree_capacity-num_draft_tokens-1:
