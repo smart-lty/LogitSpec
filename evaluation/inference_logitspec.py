@@ -9,13 +9,15 @@ from evaluation.eval import run_eval, reorg_answer_file
 
 from fastchat.utils import str_to_torch_dtype
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, __version__
 from model.logitspec.logitspec import logitspec_generate
+from model.logitspec.modeling_llama_kv import LlamaForCausalLM
 
 
 def logitspec_forward(inputs, model, tokenizer, max_new_tokens, temperature, max_ngram_size, num_pred_tokens, draft_tree_capacity):
     input_ids = inputs.input_ids
-    output_ids, idx, accept_length_list = model.logitspec_generate(
+    output_ids, idx, accept_length_list = logitspec_generate(
+        model=model,
         input_ids=inputs.input_ids, 
         max_length=max_new_tokens,
         pad_token_id=tokenizer.pad_token_id,
@@ -93,7 +95,7 @@ if __name__ == "__main__":
         "--max_ngram_size", type=int, default=3, 
     )
     parser.add_argument(
-        "--num_pred_tokens", type=int, default=10, 
+        "--num_pred_tokens", type=int, default=20, 
     )
     parser.add_argument(
         "--draft_tree_capacity", type=int, default=64, 
@@ -107,8 +109,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
-    args.model_id = args.model_id + "-temperature-" + str(args.temperature)
     
     question_file = f"data/{args.bench_name}/question.jsonl"
     
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     print(f"Output to {answer_file}")
 
 
-    model = AutoModelForCausalLM.from_pretrained(
+    model = LlamaForCausalLM.from_pretrained(
         args.model_path,
         torch_dtype=str_to_torch_dtype(args.dtype),
         low_cpu_mem_usage=True,
@@ -129,11 +129,9 @@ if __name__ == "__main__":
     
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
             
-    if not hasattr(tokenizer, "pad_token_id"):
+    if not hasattr(tokenizer, "pad_token_id") or tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
-
-    model.logitspec_generate = logitspec_generate.__get__(model, type(model))
-
+    
     run_eval(
         model=model,
         tokenizer=tokenizer,
@@ -152,5 +150,4 @@ if __name__ == "__main__":
         num_pred_tokens=args.num_pred_tokens,
         draft_tree_capacity=args.draft_tree_capacity,
     )
-
     reorg_answer_file(answer_file)

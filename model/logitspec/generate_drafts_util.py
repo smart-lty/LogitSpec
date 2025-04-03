@@ -16,7 +16,12 @@ class Pool:
         self.num_pred_tokens = num_pred_tokens
         
         self.pool = [{} for _ in range(self.max_ngram_size)]
+        
         self.construct_pool()
+        
+    def __repr__(self):
+        length = [len(_) for _ in self.pool]
+        return ", ".join([f"{i+1}: {l}" for i, l in enumerate(length)])
     
     def construct_pool(self):
         len_s = len(self.input_ids_list)
@@ -24,10 +29,10 @@ class Pool:
         for i in range(len_s):
             for l in range(1, self.max_ngram_size + 1):
                 end = i + l
-                if end > len_s:
+                if end >= len_s:
                     continue
                 substr = tuple(self.input_ids_list[i: end])
-                if end + self.num_pred_tokens <= len_s and end < len_s - l:
+                if substr not in self.pool[l-1] or len(self.input_ids_list[end: end+self.num_pred_tokens]) >= len(self.pool[l-1][substr]):
                     self.pool[l-1][substr] = self.input_ids_list[end: end+self.num_pred_tokens]
     
     def update_pool(self, new_input_ids):
@@ -42,15 +47,15 @@ class Pool:
         len_s = len(self.input_ids_list)
         
         # iteratively add each ngram into the pool
-        for i in range(len_s - self.num_pred_tokens - self.max_ngram_size, len_s):
+        for i in range(len_s - 2 * self.num_pred_tokens, len_s):
             for l in range(1, self.max_ngram_size + 1):
                 end = i + l
-                if end > len_s:
+                if end >= len_s:
                     continue
                 substr = tuple(self.input_ids_list[i: end])
-                if end + self.num_pred_tokens <= len_s and end < len_s - l:
+                if substr not in self.pool[l-1] or len(self.input_ids_list[end: end+self.num_pred_tokens]) >= len(self.pool[l-1][substr]):
                     self.pool[l-1][substr] = self.input_ids_list[end: end+self.num_pred_tokens]
-
+                    
 
 def get_draft_length_via_rank(rank: int):
     """ 
@@ -60,23 +65,21 @@ def get_draft_length_via_rank(rank: int):
     rank >50: 1
     """
     assert isinstance(rank, int)
-    if rank <= 5:
-        return 5
-    elif rank <= 30:
+    if rank <= 8:
+        return 4
+    elif rank <= 32:
         return 3
-    elif rank <= 50:
-        return 2
     else:
         return 1
 
-def generate_draft_tokens(pool, input_ids, last_logit, logit_processor, max_ngram_size=3, draft_tree_capacity=64):
+def generate_draft_tokens(pool, input_ids, last_logit, max_ngram_size=3, draft_tree_capacity=64):
     """
     LogitSpec generates draft tokens in 3 steps:
     1. generate next token as the 0-layer root of the draft tree
     2. expand the 1-layer nodes of the draft tree via last logit, which predicts the next-next-token (in BFS)
     3. Find candidate ngrams from prompt, expand each node into a sequence (similar to DFS)
     """
-    next_token = logit_processor.sample(last_logit).item()
+    next_token = last_logit.argmax().item()
     draft_token_layer_1 = last_logit.topk(k=draft_tree_capacity, dim=-1).indices[0].tolist()
     
     temp_input_ids_list = input_ids[0].tolist()
@@ -124,4 +127,44 @@ def generate_draft_tokens(pool, input_ids, last_logit, logit_processor, max_ngra
             break
         
     return next_token, candidate_list, num_draft_tokens
-       
+
+
+sub_mask_zoo = {l: torch.tril(torch.ones((l, l)))  for l in range(1, 30)}
+
+
+def prepare_attention_inputs(past_len, next_token, candidate_list, num_draft_tokens, device, pad_length, dtype=torch.float16):
+    """
+    LogitSpec organizes draft tokens in a tree manner. Each sub-sequence corresponds to a local causal mask.
+    """
+    seq_len = num_draft_tokens + 1
+    
+    draft_ids = [next_token] + [token for sub in candidate_list for token in sub]
+    draft_ids = torch.tensor(draft_ids, device=device, dtype=torch.long).unsqueeze(0)
+    
+    position_ids = torch.zeros((1, seq_len), dtype=torch.long)
+    search_path = []
+    
+    causal_mask = torch.full((seq_len, past_len + seq_len), fill_value=0)
+    causal_mask[:, :past_len+1] = 1
+    
+    idx = 1
+    for sub_sequence in candidate_list:
+        l = len(sub_sequence)
+        if l == 1:
+            causal_mask[idx, idx+past_len] = 1
+            position_ids[0, idx] = 1
+            search_path.append([0, idx] + [-1] * (pad_length-2))
+            idx += 1
+        else:
+            sub_mask = sub_mask_zoo[l]
+            causal_mask[idx:idx+l, idx+past_len:idx+past_len+l] = sub_mask
+            position_ids[0, idx:idx+l] = torch.arange(l) + 1
+            search_path.append([0] + [i for i in range(idx, idx+l)] + [-1] * (pad_length-l-1))
+            idx += l
+    
+    position_ids += past_len
+    position_ids = position_ids.to(device)
+    causal_mask = causal_mask[None, None, :, :].expand(1, 1, -1, -1).to(dtype).to(device)
+    search_path = torch.tensor(search_path, dtype=torch.long, device=device)
+    
+    return draft_ids, causal_mask, position_ids, search_path
