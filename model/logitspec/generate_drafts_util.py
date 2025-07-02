@@ -58,12 +58,6 @@ class Pool:
                     
 
 def get_draft_length_via_rank(rank: int):
-    """ 
-    rank 1-5: 5
-    rank 5-30: 3
-    rank 30-50: 2
-    rank >50: 1
-    """
     assert isinstance(rank, int)
     if rank <= 8:
         return 4
@@ -125,7 +119,7 @@ def generate_draft_tokens(pool, input_ids, last_logit, max_ngram_size=3, draft_t
             
         if num_draft_tokens >= draft_tree_capacity-1:
             break
-        
+    
     return next_token, candidate_list, num_draft_tokens
 
 

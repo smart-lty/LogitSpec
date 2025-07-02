@@ -94,7 +94,7 @@ def initialize_past_key_values(model):
         config.num_hidden_layers * 2,
         batch_size,
         config.num_key_value_heads,
-        config.max_position_embeddings + 512,
+        config.max_position_embeddings + 2048,
         config.hidden_size // config.num_attention_heads,
         device=model.device,
         dtype=model.dtype,

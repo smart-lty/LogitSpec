@@ -137,7 +137,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--tokenizer-path",
-        default='/data/heming/pretrained_models/vicuna-7b-v1.3/',
+        default='/mnt/hwfile/sport/huggingface/hub/models--lmsys--vicuna-7b-v1.3/snapshots/236eeeab96f0dc2e463f2bebb7bb49809279c6d6/',
         type=str,
         help="The file path of evaluated baseline.",
     )

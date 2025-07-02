@@ -720,6 +720,7 @@ class LlamaSdpaAttention(LlamaAttention):
         
         past_key_value = None
         
+        query_states = query_states.to(key_states.device)
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
@@ -735,6 +736,9 @@ class LlamaSdpaAttention(LlamaAttention):
             query_states = query_states.contiguous()
             key_states = key_states.contiguous()
             value_states = value_states.contiguous()
+        
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(query_states.device)
 
         attn_output = torch.nn.functional.scaled_dot_product_attention(
             query_states,

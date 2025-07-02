@@ -1,8 +1,6 @@
 from typing import List, Optional, Union
 
 import torch
-import ipdb
-import time
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 from .generate_drafts_util import Pool, generate_draft_tokens, prepare_attention_inputs
 from .kv_cache import initialize_past_key_values
@@ -31,26 +29,24 @@ def logitspec_generate(
     
     # prefilling stage, get past_key_values and last_logit
     outputs = model(input_ids, past_key_values=past_key_values)
-    current_length_data.fill_(cur_len)
     
     last_logit = outputs.logits[:, -1, :]
     verify_input_ids = input_ids[:, :]
     cur_len = verify_input_ids.shape[1]
-    
+    current_length_data.fill_(cur_len)
     max_generation_len = cur_len + max_length
     
     pool = Pool(input_ids=verify_input_ids, max_ngram_size=kwargs["max_ngram_size"], num_pred_tokens=kwargs["num_pred_tokens"])
 
     # * decoding stage, using draft-then-verify speculative decoding
     for _ in range(max_length):
-
         # * 1. get draft ids of multi-sequence, costing around 1% time of logitspec_generate
         next_token, candidate_list, num_draft_tokens = generate_draft_tokens(pool=pool.pool,
                                                                              input_ids=verify_input_ids, 
                                                                              last_logit=last_logit,
                                                                              max_ngram_size=kwargs["max_ngram_size"],
                                                                              draft_tree_capacity=kwargs["draft_tree_capacity"])
-
+        
         # * 2. prepare attention mask and position ids for these draft tokens, costing around 3% time of logitspec_generate
         draft_ids, tree_attention_mask, tree_position_ids, search_path = prepare_attention_inputs(past_len=cur_len, 
                                                                                      next_token=next_token, 
@@ -79,7 +75,7 @@ def logitspec_generate(
         accept_length_list.append(accept_len.item())
         best_path_index = torch.argmax(reward, dim=-1).to(torch.long)
         index_path = search_path[best_path_index][:accept_len]
-        
+
         # * 5. update process, costing around 1% time of logitspec_generate
         update_ids = torch.index_select(draft_ids, index=index_path, dim=1)
         tgt = past_key_values_data[..., cur_len+index_path, :]
@@ -90,7 +86,7 @@ def logitspec_generate(
         
         pool.update_pool(update_ids)
         last_logit = logits[:, index_path[-1], :]
-        
+
         # 6. check
         cur_len = verify_input_ids.shape[1]
         if (update_ids == eos_token_id).any() or cur_len >= max_generation_len:

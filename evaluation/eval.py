@@ -87,7 +87,7 @@ def get_model_answers(
     cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES')
     print('CUDA VISIBLE DEVICES:', cuda_visible_devices)
 
-    question = questions[0]
+    question = questions[-1]
 
     # warmup
     for _ in range(3):
@@ -162,7 +162,10 @@ def get_model_answers(
         for i in range(num_choices):
             cur_accept_lengths_tree = []
             torch.manual_seed(i)
-            conv = get_conversation_template("vicuna")
+            if "llama-2" in model_id.lower():
+                conv = get_conversation_template("llama-2-chat")
+            else:
+                conv = get_conversation_template("vicuna")
             turns = []
             steps = []
             new_tokens = []

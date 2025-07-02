@@ -17,6 +17,8 @@ def baseline_forward(inputs, model, tokenizer, max_new_tokens, temperature=0.0, 
         input_ids,
         do_sample=do_sample,
         temperature=temperature,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
         max_new_tokens=max_new_tokens,
     )
     new_token = len(output_ids[0][len(input_ids[0]):])
